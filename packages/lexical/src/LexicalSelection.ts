@@ -12,7 +12,6 @@ import type {NodeKey} from './LexicalNode';
 import type {ElementNode} from './nodes/LexicalElementNode';
 import type {TextFormatType} from './nodes/LexicalTextNode';
 
-import {$getAncestor, INTERNAL_$isBlock} from '@lexical/utils';
 import invariant from 'shared/invariant';
 
 import {
@@ -50,6 +49,7 @@ import {
 import {
   $findMatchingParent,
   $getAdjacentNode,
+  $getAncestor,
   $getChildrenRecursively,
   $getCompositionKey,
   $getNearestRootOrShadowRoot,
@@ -65,6 +65,7 @@ import {
   getElementByKeyOrThrow,
   getNodeFromDOM,
   getTextNodeOffset,
+  INTERNAL_$isBlock,
   isSelectionCapturedInDecoratorInput,
   isSelectionWithinEditor,
   removeDOMBlockCursorElement,
@@ -607,6 +608,26 @@ export class GridSelection implements BaseSelection {
       DEPRECATED_$isGridNode(gridNode),
       'Expected tableNode to have a parent GridNode',
     );
+
+    const focusCellGrid = focusCell.getParents()[1];
+    if (focusCellGrid !== gridNode) {
+      if (!gridNode.isParentOf(focusCell)) {
+        // focus is on higher Grid level than anchor
+        const gridParent = gridNode.getParent();
+        invariant(gridParent != null, 'Expected gridParent to have a parent');
+        this.set(this.gridKey, gridParent.getKey(), focusCell.getKey());
+      } else {
+        // anchor is on higher Grid level than focus
+        const focusCellParent = focusCellGrid.getParent();
+        invariant(
+          focusCellParent != null,
+          'Expected focusCellParent to have a parent',
+        );
+        this.set(this.gridKey, focusCell.getKey(), focusCellParent.getKey());
+      }
+      return this.getNodes();
+    }
+
     // TODO Mapping the whole Grid every time not efficient. We need to compute the entire state only
     // once (on load) and iterate on it as updates occur. However, to do this we need to have the
     // ability to store a state. Killing GridSelection and moving the logic to the plugin would make
@@ -1261,7 +1282,7 @@ export class RangeSelection implements BaseSelection {
             lastNode = textNode;
           }
           // root node selections only select whole nodes, so no text splice is necessary
-          if (!$isRootNode(endPoint.getNode())) {
+          if (!$isRootNode(endPoint.getNode()) && endPoint.type === 'text') {
             lastNode = (lastNode as TextNode).spliceText(0, endOffset, '');
           }
           markedNodeKeysForKeep.add(lastNode.__key);
